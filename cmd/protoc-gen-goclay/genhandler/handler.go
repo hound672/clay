@@ -15,12 +15,13 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
-	"github.com/utrack/clay/v3/cmd/protoc-gen-goclay/internal"
-	"github.com/utrack/clay/v3/cmd/protoc-gen-goclay/third-party/grpc-gateway/internals/descriptor"
 	"golang.org/x/tools/imports"
 	"google.golang.org/genproto/googleapis/api/annotations"
 	"google.golang.org/protobuf/proto"
 	plugin "google.golang.org/protobuf/types/pluginpb"
+
+	"github.com/utrack/clay/v3/cmd/protoc-gen-goclay/internal"
+	"github.com/utrack/clay/v3/cmd/protoc-gen-goclay/third-party/grpc-gateway/internals/descriptor"
 )
 
 type Generator struct {
@@ -132,9 +133,11 @@ func (g *Generator) generateImpl(file *descriptor.File) (files []*plugin.CodeGen
 	guessModule()
 	prefix := g.pathPrefixFor(file)
 	implPathRelative := g.implPathRelativeFor(file)
+	glog.V(0).Infof("implPathRelative: %s", implPathRelative)
 
 	var pkg *ast.Package
 	if !g.options.ServiceSubDir {
+		glog.V(0).Infof("filepath.Join(prefix, g.options.ImplPath): %s", filepath.Join(prefix, g.options.ImplPath))
 		pkg, err = astPkg(descriptor.GoPackage{
 			Name: file.GoPkg.Name,
 			Path: filepath.Join(prefix, g.options.ImplPath),
@@ -143,6 +146,7 @@ func (g *Generator) generateImpl(file *descriptor.File) (files []*plugin.CodeGen
 			return nil, err
 		}
 		if pkg == nil {
+			glog.V(0).Infof("filepath.Join(prefix, implPathRelative): %s", filepath.Join(prefix, implPathRelative))
 			pkg, err = astPkg(descriptor.GoPackage{
 				Name: file.GoPkg.Name,
 				Path: filepath.Join(prefix, implPathRelative),
@@ -154,6 +158,8 @@ func (g *Generator) generateImpl(file *descriptor.File) (files []*plugin.CodeGen
 	}
 	for _, svc := range file.Services {
 		if g.options.ServiceSubDir {
+			glog.V(0).Infof("PREFIX: %s; %s; %s", prefix, g.options.ImplPath, internal.KebabCase(svc.GetName()))
+			glog.V(0).Infof("filepath.Join(prefix, g.options.ImplPath, internal.KebabCase(svc.GetName())): %s", filepath.Join(prefix, g.options.ImplPath, internal.KebabCase(svc.GetName())))
 			pkg, err = astPkg(descriptor.GoPackage{
 				Name: file.GoPkg.Name,
 				Path: filepath.Join(prefix, g.options.ImplPath, internal.KebabCase(svc.GetName())),
@@ -162,6 +168,7 @@ func (g *Generator) generateImpl(file *descriptor.File) (files []*plugin.CodeGen
 				return nil, err
 			}
 			if pkg == nil {
+				glog.V(0).Infof("filepath.Join(prefix, implPathRelative, internal.KebabCase(svc.GetName()): %s", filepath.Join(prefix, implPathRelative, internal.KebabCase(svc.GetName())))
 				pkg, err = astPkg(descriptor.GoPackage{
 					Name: file.GoPkg.Name,
 					Path: filepath.Join(prefix, implPathRelative, internal.KebabCase(svc.GetName())),
@@ -207,7 +214,7 @@ func (g *Generator) generateImplService(file *descriptor.File, svc *descriptor.S
 			Content: proto.String(string(formatted)),
 		})
 
-		glog.V(1).Infof("Will emit %s", output)
+		glog.V(0).Infof("Will emit %s", output)
 	} else {
 		glog.V(0).Infof("Implementation of service `%s` will not be emitted: type `%s` already exists in package `%s`", svc.GetName(), implTypeName(svc), file.GoPkg.Name)
 	}
@@ -225,7 +232,10 @@ func (g *Generator) generateImplService(file *descriptor.File, svc *descriptor.S
 
 func (g *Generator) generateImplServiceMethod(file *descriptor.File, svc *descriptor.Service, method *descriptor.Method, astPkg *ast.Package) ([]*plugin.CodeGeneratorResponse_File, error) {
 	methodGoName := goTypeName(method.GetName())
+	glog.V(0).Infof("Method name: %s; Force: %v", methodGoName, g.options.Force)
+
 	if exists := astMethodExists(implTypeName(svc), methodGoName, astPkg); !exists || g.options.Force {
+		glog.V(0).Infof("Implementation of method `%s` for service `%s` WILL be emitted: method already exists in package: `%s`", methodGoName, svc.GetName(), file.GoPkg.Name)
 		prefix := g.pathPrefixFor(file)
 		var output string
 		if g.options.ServiceSubDir {
@@ -244,12 +254,14 @@ func (g *Generator) generateImplServiceMethod(file *descriptor.File, svc *descri
 			return nil, err
 		}
 
-		glog.V(1).Infof("Will emit %s", output)
+		glog.V(1).Infof("Wwill not be emittedill emit %s", output)
 
 		result := []*plugin.CodeGeneratorResponse_File{{
 			Name:    proto.String(output),
 			Content: proto.String(implCode),
 		}}
+
+		glog.V(0).Infof("Result: %s", output)
 
 		if !g.options.WithTests {
 			return result, nil
@@ -497,7 +509,8 @@ func (g *Generator) getImplParam(f *descriptor.File, s *descriptor.Service, m *d
 }
 
 // protobuf-v2 has an option to store generated pb relative to protofile path, which is widely used.
-// 	More on implementation details - google.golang.org/protobuf@v1.27.1/compiler/protogen/protogen.go:432.
+//
+//	More on implementation details - google.golang.org/protobuf@v1.27.1/compiler/protogen/protogen.go:432.
 func (g *Generator) pathPrefixFor(file *descriptor.File) string {
 	if g.options.PathsParamType == PathsParamTypeSourceRelative {
 		return strings.TrimSuffix(file.GeneratedFilenamePrefix, filepath.Base(file.GeneratedFilenamePrefix))
@@ -601,9 +614,31 @@ func hasBindings(service *descriptor.Service) bool {
 }
 
 func astPkg(pkg descriptor.GoPackage) (*ast.Package, error) {
+	//err := os.Chdir("./pkg/api")
+	//if err != nil {
+	//	panic(err)
+	//}
+
+	d, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+
+	glog.V(0).Infof("CurDir: %s", d)
+
+	glog.V(0).Infof("Descr: %s; %s; %s", pkg.Path, pkg.Name, pkg.Alias)
+	list, err := os.ReadDir(pkg.Path)
+	glog.V(0).Infof("List: %v", list)
+
 	fileSet := token.NewFileSet()
 	astPkgs, err := parser.ParseDir(fileSet, pkg.Path, func(info os.FileInfo) bool {
+
+		if err != nil {
+			panic(err)
+		}
 		name := info.Name()
+		glog.V(0).Infof("astPkg. Name: %s; set: %v; path: %v", name, fileSet, pkg.Path)
+
 		return !info.IsDir() && !strings.HasPrefix(name, ".") &&
 			!strings.HasSuffix(name, "_test.go") && strings.HasSuffix(name, ".go")
 	}, parser.DeclarationErrors)
@@ -639,13 +674,16 @@ func astTypeExists(typeName string, pkg *ast.Package) bool {
 		}
 	}
 	return false
+
 }
 
 func astMethodExists(typeName, methodName string, pkg *ast.Package) bool {
+	glog.V(0).Infof("typeName: %v, methodName: %v, pkg: %v", typeName, methodName, pkg)
 	if pkg == nil {
 		return false
 	}
-	for _, f := range pkg.Files {
+	for n, f := range pkg.Files {
+		glog.V(0).Infof("n: %s; f: %v", n, f.Name)
 		for _, d := range f.Decls {
 			if fd, ok := d.(*ast.FuncDecl); ok && fd.Name != nil && fd.Name.Name == methodName && fd.Recv != nil && len(fd.Recv.List) > 0 {
 				if se, ok := fd.Recv.List[0].Type.(*ast.StarExpr); ok {
